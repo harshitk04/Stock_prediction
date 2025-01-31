@@ -24,8 +24,11 @@ def get_scaler_path(stock):
 @app.route('/predict', methods=['GET'])
 def predict():
     stock_symbol = request.args.get('symbol', '').upper()
-    if not stock_symbol:
-        return jsonify({"error": "Please provide a stock symbol"}), 400
+    print(f"Checking model at: {get_model_path(stock_symbol)}")  # Debug line
+    print(f"File exists? {os.path.exists(get_model_path(stock_symbol))}")  # Debug line
+    
+    if not os.path.exists(get_model_path(stock_symbol)):
+        return jsonify({"error": f"No trained model for {stock_symbol}"}), 404
     
     try:
         if not os.path.exists(get_model_path(stock_symbol)):
@@ -38,13 +41,18 @@ def predict():
             scaler = pickle.load(f)
     
         end_date = date.today()
-        start_date = end_date - timedelta(days=LOOK_BACK + 10)
+        start_date = end_date - timedelta(days=LOOK_BACK*2)
         
         df = yf.download(stock_symbol, start=start_date, end=end_date)
         if df.empty:
             return jsonify({"error": "Failed to fetch stock data"}), 500
     
         data = df['Close'].values.reshape(-1, 1)
+        if len(data) < LOOK_BACK:
+            return jsonify({
+                "error": f"Insufficient data ({len(data)} days). Need {LOOK_BACK} trading days."
+                }), 400
+        
         scaled_data = scaler.transform(data)
         
         inputs = scaled_data[-LOOK_BACK:].reshape(1, LOOK_BACK, 1)
